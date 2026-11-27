@@ -12,6 +12,10 @@ contract member that sets its numbers at solve time (the library holds no number
 
 An empty ``applied_by`` is a catalogued constraint no solver compiles yet, stated rather than
 implied (D179).
+
+The ``conditional_resource`` family (WP-SIZE-11, `compute`) is compiled by both paths, but only on a
+conditional overlay solve handed a declared IC-9 envelope; the priced-floor solve never carries it
+(D-NEW-SIZE11-2).
 """
 
 from __future__ import annotations
@@ -22,7 +26,8 @@ from typing import Final
 
 
 class Family(StrEnum):
-    """The roadmap's constraint families (WP-SIZE-02), plus the inverter's power rating."""
+    """The roadmap's constraint families (WP-SIZE-02), plus the inverter's power rating and the
+    conditional resources (WP-SIZE-11), which never enter the priced floor."""
 
     CONNECTION = "connection"
     POWER_RATING = "power_rating"
@@ -31,6 +36,7 @@ class Family(StrEnum):
     SOC_WINDOW = "soc_window"
     WARRANTY = "warranty"
     COMMITMENT = "commitment"
+    CONDITIONAL_RESOURCE = "conditional_resource"
 
 
 ANNUAL_MILP: Final = "annual_milp"
@@ -66,6 +72,56 @@ CATALOGUE: Final[tuple[ConstraintSpec, ...]] = (
         "soe >= soe_floor + held_energy_kwh / eta_dis inside the windows",
         ("held_state_of_energy_<commitment_id>",),
         ("dispatch descriptor parameters: AvailabilityCommitment (held_state_of_energy)",),
+        _BOTH,
+    ),
+    ConstraintSpec(
+        "compute_call_budget",
+        Family.CONDITIONAL_RESOURCE,
+        "compute",
+        "per SLA class: starts per event window, called half-hours per duration window and the "
+        "minimum rest, net of the history's use (conditional overlay only, never the floor)",
+        (
+            "compute_events_<class>",
+            "compute_minutes_<class>",
+            "compute_rest_<class>",
+            "compute_blocked_<class>",
+        ),
+        ("IC-9 SlaClass.call_limits", "IC-9 call_budget_used over the call history"),
+        _BOTH,
+    ),
+    ConstraintSpec(
+        "compute_call_shape",
+        Family.CONDITIONAL_RESOURCE,
+        "compute",
+        "a call holds one kW per envelope for its run, runs at most the duration its layers were "
+        "read at, and never crosses a metering gap (conditional overlay only, never the floor)",
+        (
+            "compute_start_<class>",
+            "compute_run_<class>",
+            "compute_call_level_up_<envelope>",
+            "compute_call_level_down_<envelope>",
+        ),
+        ("call duration_min (the consumer's)", "IC-9 ResponseTerms"),
+        _BOTH,
+    ),
+    ConstraintSpec(
+        "compute_meter_displacement",
+        Family.CONDITIONAL_RESOURCE,
+        "compute",
+        "discharge + meter factor x compute turn-down <= site load: one kW is displaced once "
+        "(conditional overlay only, never the floor)",
+        ("compute_meter_displacement",),
+        ("half-hourly load", "meter kW per IT kW (default 1.0)"),
+        _BOTH,
+    ),
+    ConstraintSpec(
+        "compute_turn_down_limit",
+        Family.CONDITIONAL_RESOURCE,
+        "compute",
+        "turn-down <= the envelope's IC-9 stack_at layer x the class's call binary "
+        "(conditional overlay only, never the floor)",
+        ("compute_turn_down_limit_<envelope>",),
+        ("IC-9 ComputeTurndownDeclaration (offered_at, stack_at)", "half-hourly IT load"),
         _BOTH,
     ),
     ConstraintSpec(

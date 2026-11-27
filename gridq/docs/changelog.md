@@ -3,6 +3,42 @@
 All meaningful changes to this project. Newest first. Dates are ISO (YYYY-MM-DD).
 (Canonical location; the former top-level `CHANGELOG.md` now points here.)
 
+## 2026-11-27 — WP-SIZE-11: compute envelopes as conditional resources (`constraint_library.compute`)
+
+- **Releases `conditional_compute_resource`** (spec B8-03: envelopes enter A5/B2 "as conditional
+  resources only"; D-NEW-SIZE11-1 to -6, renumbered at merge). A declared IC-9 compute turn-down
+  envelope enters the dispatch through one library module, so the sizer and live dispatch take it from
+  the same rows.
+  - **Library 1.1.0** (a minor: four added constraints, no existing row changed). New family
+    `conditional_resource`: `compute_turn_down_limit`, `compute_call_shape`, `compute_call_budget`,
+    `compute_meter_displacement`. `compute_resource` resolves a declaration onto a solve's half-hours
+    through the contract's own readers (`offered_at`, `stack_at`, `call_budget_used`);
+    `compile_conditional_compute` adds the rows and the objective term; `account_conditional_compute`
+    turns the solved calls into IC-9 `ProposedCall`s, checks each with `check_call` and credits only
+    the accepted ones at the contract's prices.
+  - **Conditional by construction.** Compiled only on an overlay solve
+    (`optimisation/compute_overlay.py`: `solve_with_compute_turndown` for sizing,
+    `solve_window_with_compute` for a live window through `solve_window_outcome`). The floor solve is
+    the solver's own; the outcome (`ConditionalComputeOutcome`) is fixed `conditional`, never in the
+    priced floor, and net of the floor £ the overlay's battery gave up. No IC-12 or IC-9 change.
+  - **Solver hooks** (`milp_solver.py`): one keyword, `compute_resource=None`, on `_solve_milp` and
+    `solve_window_outcome`. `None` adds nothing.
+- **Criterion 2, byte for byte.** Every model the dispatch suites build (`test_optimisation_milp_solver`,
+  `_commitments`, `_provisioning`, `test_mpc_solver`, `test_reactive_power`,
+  `test_milp_dispatch_physics`, `test_constraint_library`, `test_mpc_infeasibility_regression`) was
+  written as an LP file on the base (61ed2b7) and on this branch: 483 files each side, the same
+  names. 482 were byte-identical on the first pass. The one that was not
+  (`test_g2_adversarial_spread_no_co_dispatch_and_clean_arbitrage`) differed only in the last printed
+  digit of some objective coefficients. Re-captured four times on the branch (alone three times and
+  in its module once), it matched the base byte for byte every time. The first-pass difference did
+  not reproduce, and its cause was not found.
+  The golden tier (`tests/test_determinism_golden.py`) passed with no golden file changed.
+- **Tests:** `tests/test_conditional_compute.py` (14, in `SLOW_MODULES`: 66 s on a loaded machine),
+  all declarations SYNTHETIC;
+  `tests/test_constraint_library.py` follows the new module and version.
+- **Not wired:** `MpcDispatchSolver`'s loop carries no declaration (B2 scope; WP-SIZE-03 is changing
+  the solver in parallel). The window path it would call is wired and tested.
+
 ## 2026-11-26 — WP-SITE-06: ramp, RVC and ride-through screens with a PSAL handoff (`gridq.ramp_ridethrough`)
 
 - **New package `gridq.ramp_ridethrough`** releases `ramp_ridethrough_screen` (spec A3-03, A3-04;

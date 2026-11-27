@@ -833,6 +833,10 @@ class MilpDispatchSolver:
         # timestamp, read once by `_load_series_signed` and aligned per solve. Absent key = the
         # file meters no reactive channel, and every solve on it is byte-identical to before.
         self._reactive_series: dict[str, pd.Series] = {}
+        # WP-SIZE-11: the conditional compute turn-down solved by the most recent `_solve_milp`
+        # that was handed a compute resource (``None`` otherwise). Read by
+        # `optimisation.compute_overlay`; never by the floor path.
+        self._last_compute_solution: _cl.compute.ComputeSolution | None = None
 
     def last_schedule(self) -> HalfHourlyDispatchSchedule | None:
         """The full half-hourly schedule from the last successful ``solve`` (``None`` otherwise)."""
@@ -1135,6 +1139,8 @@ class MilpDispatchSolver:
         rte: float,
         initial_soe_kwh: float,
         weights: ObjectiveWeights | None = None,
+        *,
+        compute_resource: _cl.compute.ComputeResource | None = None,
     ) -> WindowOutcome:
         """Solve one rolling-horizon window and keep WHY it refused, if it did (WP-SIZE-01).
 
@@ -1144,6 +1150,10 @@ class MilpDispatchSolver:
         unpriceable window (F-01, including a start state outside the usable SoE window), and
         ``INFEASIBLE`` when HiGHS returns no optimal solution. ``reasons`` carries the refusal text
         and the model-build warnings that explain it (over-commitment, HiGHS termination).
+
+        ``compute_resource``: a declared IC-9 compute turn-down resolved onto this window (live
+        dispatch, WP-SIZE-11); ``None`` builds the window exactly as before. A CONDITIONAL
+        resource: see `optimisation.compute_overlay.solve_window_with_compute`.
         """
         try:
             schedule, _binding, warnings = self._solve_milp(
@@ -1155,6 +1165,7 @@ class MilpDispatchSolver:
                 initial_soe_kwh=initial_soe_kwh,
                 use_binary=True,
                 weights=weights,
+                compute_resource=compute_resource,
             )
         except _UnpriceableDispatch as exc:
             # F-01: an unpriceable window yields no schedule rather than one priced at £0 charge
@@ -1415,6 +1426,7 @@ class MilpDispatchSolver:
         export_limit_basis: str | None = None,
         net_load_kw: np.ndarray | None = None,
         capacity_price_gbp_per_kw_year: float | None = None,
+        compute_resource: _cl.compute.ComputeResource | None = None,
     ) -> tuple[HalfHourlyDispatchSchedule | None, list[str], list[str]]:
         """Build + solve the linopy/HiGHS model; return (schedule, binding, warnings).
 
@@ -1467,6 +1479,12 @@ class MilpDispatchSolver:
         both receive the already-clipped series) falls back to ``load``, so surplus contributes no
         extra headroom there — byte-identical to the pre-D-174 model and conservative in the
         priced direction.
+
+        ``compute_resource``: a declared IC-9 compute turn-down resolved onto these half-hours
+        (WP-SIZE-11, `constraint_library.compute`). CONDITIONAL money, so it is never set on a
+        floor solve: ``None`` (every floor solve) adds not one variable or row. When set and it
+        offers anything, the library compiles its rows, its term joins the objective, the solve is
+        a binary MILP, and the solution is kept on ``_last_compute_solution``.
         """
         import linopy
         import xarray as xr
@@ -2132,6 +2150,26 @@ class MilpDispatchSolver:
         _cl.resilience.add_load_service_prepositions(
             model, soe, prov_prepos, pred, soe_floor, eta, n, coords
         )
+        # WP-SIZE-11: the conditional compute resource (never on a floor solve; see the docstring).
+        compute: _cl.compute.CompiledCompute | None = None
+        if compute_resource is not None:
+            self._last_compute_solution = None
+            if interval_weights is not None:
+                raise InvalidRequestError(
+                    "a compute turn-down resource is not compiled on a weighted (typical-period) "
+                    "solve: its call budgets count real half-hours."
+                )
+            compute = _cl.compute.compile_conditional_compute(
+                model,
+                compute_resource,
+                discharge=discharge,
+                load_kw=np.asarray(load, dtype=float).reshape(-1),
+                avoided_price_gbp_per_kwh=price,
+                rebound_price_gbp_per_kwh=buy_price,
+                dt=dt,
+                coords=coords,
+                segment_starts=starts,
+            )
         compiled, commit_warnings, committed_kw = self._compile_commitments(
             problem,
             model,
@@ -2251,6 +2289,8 @@ class MilpDispatchSolver:
                 objective = objective - w.aging_beta * ((export_flow + charge) * w_da * dt).sum()
         if export_rev_term is not None:
             objective = objective + export_rev_term
+        if compute is not None:
+            objective = objective + compute.objective
         if reactive_excess is not None and reactive is not None:
             # A real £ (the published excess reactive rate), on the same horizon basis as the
             # revenue terms. Present only with a metered series AND a stated rate.
@@ -2281,7 +2321,7 @@ class MilpDispatchSolver:
         # Deliberately NOT set on the pure-LP path (`ipm` + crossover): an LP has no MIP gap, the
         # crossover returns a basic optimal vertex, and setting the option there would only be
         # misleading. Do not "fix" that by setting it unconditionally.
-        binary_solve = use_binary or export_wash_binary
+        binary_solve = use_binary or export_wash_binary or compute is not None
         if binary_solve:
             solve_kwargs["mip_rel_gap"] = _MIP_REL_GAP
         else:
@@ -2311,6 +2351,9 @@ class MilpDispatchSolver:
                 )
             else:
                 warnings.append(gap_note)
+
+        if compute is not None:
+            self._last_compute_solution = compute.read()
 
         # The first-pass solution, copied, so a second pass that is not adopted (or not optimal)
         # leaves the returned schedule bit for bit what it was before D67.

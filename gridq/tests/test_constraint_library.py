@@ -119,6 +119,7 @@ def test_the_package_is_every_module_the_scan_reads() -> None:
         "_releases.py",
         "catalogue.py",
         "commitments.py",
+        "compute.py",
         "connection.py",
         "identity.py",
         "resilience.py",
@@ -668,7 +669,7 @@ def test_the_sizer_stamps_each_candidate_result(
         model_version="m",
     )
     assert result.constraint_library == cl.library_ref()
-    assert result.model_dump(mode="json")["constraint_library"]["library_version"] == "1.0.1"
+    assert result.model_dump(mode="json")["constraint_library"]["library_version"] == "1.1.0"
 
 
 @pytest.fixture

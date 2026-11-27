@@ -3,10 +3,12 @@
 The constraints a battery dispatch must honour live here and nowhere else: the import and export
 limits and the kVA polygons (`connection`), the resilience floor of declared load-service
 obligations (`resilience`), the thermal turn-down limit from an IC-11 surface (`thermal`), the
-usable SoC window (`soc`), the warranty throughput cap (`warranty`) and contracted availability
-commitments (`commitments`). The sizer's dispatch (`MilpDispatchSolver`, called per candidate) and
-the rolling-horizon MPC (`MpcDispatchSolver`, which solves each window through the same build) both
-compile their constraints from these modules (NEW-SIZE-LIB: B2-02 needs the same library as A5).
+usable SoC window (`soc`), the warranty throughput cap (`warranty`), contracted availability
+commitments (`commitments`) and, as conditional resources only, declared IC-9 compute turn-down
+envelopes (`compute`, WP-SIZE-11: compiled on a conditional overlay solve, never the floor). The
+sizer's dispatch (`MilpDispatchSolver`, called per candidate) and the rolling-horizon MPC
+(`MpcDispatchSolver`, which solves each window through the same build) both compile their
+constraints from these modules (NEW-SIZE-LIB: B2-02 needs the same library as A5).
 
 **Boundary (D176).** The library imports frozen contracts only (`gridq.contracts`, and
 the IC-12 chassis in `gridq.schemas`), the standard library and numpy, pandas and xarray; never
@@ -23,6 +25,7 @@ from __future__ import annotations
 from gridq.constraint_library import (
     catalogue,
     commitments,
+    compute,
     connection,
     resilience,
     soc,
@@ -48,6 +51,7 @@ __all__ = [
     "catalogue",
     "check_envelope",
     "commitments",
+    "compute",
     "connection",
     "constraint_ids",
     "library_hash",

@@ -26,7 +26,7 @@ from gridq.contracts.dispatch_envelope import (
 from gridq.schemas import ConstraintLibraryRef
 
 LIBRARY_ID: Final = "gridq.constraint_library"
-LIBRARY_VERSION: Final = "1.0.1"
+LIBRARY_VERSION: Final = "1.1.0"
 
 _PACKAGE_DIR: Final = Path(__file__).resolve().parent
 #: The one file the hash leaves out: it records the hash, so it cannot be inside it.

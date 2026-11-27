@@ -4,6 +4,143 @@ Decision log. Newest first. Each entry: **date · decision · reason · alternat
 
 ---
 
+### D-NEW-SIZE11-6 — No envelope, no change: nothing is compiled, shown byte for byte
+
+- **Date:** 2026-11-27
+- **Author:** Fable 5.2, under the owner's delegation of design decisions (DEL-2026-11-25-1,
+  WP-SIZE-11). Executed for Olly. It is not the owner's own words. Placeholder number, renumbered at
+  merge.
+- **Decision.** With no declaration, `solve_with_compute_turndown` and `solve_window_with_compute`
+  solve nothing of their own and say so (`NO_ENVELOPE`). `_solve_milp` takes the resource only as a
+  keyword that defaults to `None`, and `None` adds no variable, row or objective term. A declaration
+  that offers nothing over the horizon (outside its validity, every cell unavailable, every layer
+  zero) compiles nothing either: `compile_conditional_compute` returns `None` before touching the model.
+- **Tests.** `test_no_envelope_compiles_nothing_and_writes_the_floor_lp_byte_for_byte` (the annual
+  build and an MPC window write identical LP files with and without an idle resource); its control
+  `test_an_offering_declaration_does_compile_the_library_rows`. Outside the suite, the LP files of
+  every model the eight dispatch suites build were captured before and after the change (the WP-SIZE-02
+  method) and compared byte for byte; the golden tier passed with no golden file changed
+  (`docs/changelog.md`, 2026-11-27).
+- **Direction of effect.** None on any existing figure.
+- **Alternatives considered.** A zero-capacity resource always compiled (rows with a zero bound) would
+  change every LP file and the solve path (binary) for no value.
+- **Consequences.** Criterion 2 is structural, not a tolerance.
+
+### D-NEW-SIZE11-5 — Conservative economics where the declaration is silent
+
+- **Date:** 2026-11-27
+- **Author:** Fable 5.2, under the owner's delegation of design decisions (DEL-2026-11-25-1,
+  WP-SIZE-11). Executed for Olly. It is not the owner's own words. Placeholder number, renumbered at
+  merge.
+- **Decision.** A kWh turned down is worth what a kWh discharged earns in the same build (the
+  delivered import price: energy, DUoS, levies, DFS). Where IC-9 is silent the value goes down, and the
+  outcome notes each choice: recovery unknown is taken as full return (deferred work is the same work
+  later); a class whose return is unknown is taken to return; no return window prices the rebound at
+  the dearest half-hour left; the rebound is priced at the dearest half-hour of its window at the
+  build's charge-side price; a start pays the event fee and the whole layer's ramp at the start price;
+  the turn-down earns no charge headroom for the battery; the meter factor defaults to 1.0 (the IT kW
+  alone, no UPS, distribution or cooling saving claimed without evidence). One row,
+  `compute_meter_displacement` (discharge + m x turn-down <= load), stops the battery and the turn-down
+  displacing the same kW. An unknown price is never read as zero: the objective carries no cost for it,
+  and the outcome names the envelope in `cost_unknown` and says the value is GROSS of it (D45: derive
+  and declare, never a silent zero).
+- **Direction of effect.** Down on the conditional figure in each case; none on the floor.
+- **Alternatives considered.** Pricing the rebound at the average price, or treating an unknown
+  recovery as the curve's own figure, would overstate a third party's offer.
+- **Consequences.** The figure is a defensible lower reading of a conditional upside.
+
+### D-NEW-SIZE11-4 — Every call is the contract's, checked by the contract, credited only if accepted
+
+- **Date:** 2026-11-27
+- **Author:** Fable 5.2, under the owner's delegation of design decisions (DEL-2026-11-25-1,
+  WP-SIZE-11). Executed for Olly. It is not the owner's own words. Placeholder number, renumbered at
+  merge.
+- **Decision.** Each run of called half-hours becomes an IC-9 `ProposedCall` at the solve's whole kW
+  per envelope (floored), issued at its notice ahead of the start on a plan, or at `issued_at` in a live
+  window. The calls are checked by `check_call` in start order, each against the history and the calls
+  already accepted; a rejected call is not credited and its reasons are on the outcome. Costs are the
+  contract's own (`call_cost_pence`, `availability_cost_pence`, exact pence).
+- **Tests.** `test_every_credited_call_passes_the_contracts_check`,
+  `test_a_live_window_honours_notice_and_the_history`.
+- **Direction of effect.** Down only (a call the model plans but the contract refuses earns nothing).
+- **Alternatives considered.** Trusting the MILP's rows alone: they are a conservative positional
+  reading of rolling windows, but the contract is the authority, so it decides.
+- **Consequences.** The rows and the contract can never disagree in the operator's favour.
+
+### D-NEW-SIZE11-3 — The formulation: binary calls of fixed duration and constant kW
+
+- **Date:** 2026-11-27
+- **Author:** Fable 5.2, under the owner's delegation of design decisions (DEL-2026-11-25-1,
+  WP-SIZE-11). Executed for Olly. It is not the owner's own words. Placeholder number, renumbered at
+  merge.
+- **Decision.** The caller states the call duration (D127). Layers are read from the contract's
+  `stack_at` at that duration and the IT load running at each half-hour (merit order, exclusion groups,
+  concurrent cap, retained IT floor). Per SLA class a binary call variable; per envelope a turn-down
+  variable bounded by its layer times the call. A call holds one kW per envelope for its run, runs at
+  most the stated duration, never crosses a metering gap, and its starts and ends are counted. Budgets
+  are positional rolling windows over the series (stricter across a gap, never looser): starts per event
+  window, called half-hours per duration window extended by one call so every call is counted whole,
+  the minimum rest after each end, all net of what the history has used (the contract's
+  `call_budget_used`); a past call still in force blocks new calls. An unknown limit is not enforced
+  and not assumed, and is listed in `unchecked` (the contract's rule). A live window zeroes an envelope
+  inside its notice. The solve becomes a binary MILP (the B-09 gap is pinned and read back); a weighted
+  typical-period solve refuses the resource, because budgets count real half-hours.
+- **Direction of effect.** None on the floor.
+- **Alternatives considered.** A continuous relaxation (no binaries) cannot count events or rest; a
+  per-envelope binary would let two envelopes of one class run two calls against one budget.
+- **Consequences.** A full-year overlay is a larger MILP than the floor LP; it runs only when an
+  envelope is declared.
+
+### D-NEW-SIZE11-2 — Conditional by construction, netted against the floor
+
+- **Date:** 2026-11-27
+- **Author:** Fable 5.2, under the owner's delegation of design decisions (DEL-2026-11-25-1,
+  WP-SIZE-11). Executed for Olly. It is not the owner's own words. Placeholder number, renumbered at
+  merge.
+- **Decision.** B8-03: envelopes enter the dispatch "as conditional resources only". The resource is
+  compiled only on a second, overlay solve (the MICASC-3 method); the floor solve has no argument that
+  carries it, and its schedule, bill and streams are the solver's own. `ConditionalComputeOutcome`
+  fixes `firmness = conditional` and `in_priced_floor = False` and refuses anything else; it is not an
+  IC-12 member and no value stream, so no priced-floor reader can sum it. The floor £ the overlay's
+  battery gives up (arbitrage, DUoS, windowed levy, DFS, measured on both schedules) is subtracted from
+  the conditional figure. Only the overlay module hands a resource to a solve, and inside the solver only
+  the window entry point passes it on (an AST test). This is not a D57 gate: no floor stream is touched;
+  the compute offer is a third party's, which B8-03 itself classifies conditional.
+- **Tests.** `test_the_outcome_is_conditional_by_construction`,
+  `test_no_floor_reader_can_reach_the_compute_resource`,
+  `test_the_floor_solve_is_untouched_by_a_declaration`.
+- **Direction of effect.** None on the floor; the conditional figure is net of any floor loss.
+- **Alternatives considered.** A new IC-12 member or a `MarketStream`: a frozen-contract change for a
+  figure nothing downstream reads yet (the IC-12 minor is left to the consumer that needs it, WP-UW).
+  Compiling it into the floor objective would let the optimiser sell firm £ to buy conditional £.
+- **Consequences.** A consumer that wants the figure on a record adds it then, as conditional.
+
+### D-NEW-SIZE11-1 — One library module, read through the contract's readers; library 1.1.0
+
+- **Date:** 2026-11-27
+- **Author:** Fable 5.2, under the owner's delegation of design decisions (DEL-2026-11-25-1,
+  WP-SIZE-11). Executed for Olly. It is not the owner's own words. Placeholder number, renumbered at
+  merge.
+- **Decision.** `gridq.constraint_library.compute` holds the resource builder, the rows, the reading
+  and the accounting, importing only `gridq.contracts` (IC-9 1.0.0, frozen, unedited), `gridq.schemas`,
+  the standard library, numpy and pandas (D176). The catalogue gains the family `conditional_resource`
+  and four ids (`compute_call_budget`, `compute_call_shape`, `compute_meter_displacement`,
+  `compute_turn_down_limit`), applied by both the annual build and the MPC window build. That is a
+  minor release: `LIBRARY_VERSION` 1.1.0 with its hash in `_releases.RELEASES`, stamped on every
+  `OptimisationResult` through the existing IC-12 3.2.0 member (no chassis change). The production
+  entry points are `gridq.optimisation.compute_overlay.solve_with_compute_turndown` (sizing, A5) and
+  `solve_window_with_compute` (live dispatch, B2, through `MilpDispatchSolver.solve_window_outcome`).
+  `MpcDispatchSolver`'s own loop is not wired (it carries no declaration today, and WP-SIZE-03 is
+  changing the solver in parallel); the window path it would call is.
+- **Tests.** `test_the_conditional_family_is_catalogued_and_compiled_by_both_paths`,
+  `test_the_library_release_is_a_minor_with_its_hash_pinned`, the library's own boundary and release
+  tests.
+- **Direction of effect.** None on the floor.
+- **Alternatives considered.** A module in `gridq.datacentre` (WP-SITE-08's adapter package): sizing
+  and dispatch would then read the envelopes from workstream code, against D176.
+- **Consequences.** The placeholders in the package docstrings become D numbers at merge, which is a
+  library patch (1.1.1), as WP-SIZE-02's own integration was.
+
 ### D204 — Reconciliation of the five WP-SITE-06 rulings, and where the build departs
 
 - **Date:** 2026-11-26

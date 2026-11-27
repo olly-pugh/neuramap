@@ -348,6 +348,10 @@ tests pass before a change is done; outputs stay deterministic and reproducible.
   import limit, resilience floor, thermal limit, SoC window, warranty cap and commitments the MILP, every
   MPC window and the sizer's search box all build from. It imports contracts only; any edit to it is a
   release (`LIBRARY_VERSION` + `_releases.RELEASES`), stamped on every `OptimisationResult`.
+- **Compute turn-down (conditional only):** `constraint_library/compute.py` compiles a declared IC-9
+  envelope into the dispatch, only on an overlay solve (`optimisation/compute_overlay.py`:
+  `solve_with_compute_turndown` for sizing, `solve_window_with_compute` for a live window). Its £ is
+  `ConditionalComputeOutcome`, fixed `conditional`, never in the priced floor (WP-SIZE-11).
 - **Test fixture factory:** `tests/conftest.py` — `make_site(with_max_import=True|False)`.
 - **Example shapes:** `examples/`. Real site source data: `examples/real/` — read-only evidence;
   re-derive figures with `scripts/extract_site_data.py`, never edit the workbooks.

@@ -53,6 +53,7 @@ SLOW_MODULES=(
   tests/test_windowed_levy_capacity_market.py      # 147 s
   tests/test_cli_run.py                            # 104 s
   tests/test_hgv_provisioning_e2e.py               # 95 s
+  tests/test_conditional_compute.py                # 66 s (measured under load, WP-SIZE-11)
   tests/test_before_bill_without_dispatch.py       # 62 s
   tests/test_optimisation_provisioning.py          # 60 s
 )
